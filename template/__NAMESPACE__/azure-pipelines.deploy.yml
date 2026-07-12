@@ -1,0 +1,35 @@
+steps:
+  - task: FileTransform@2
+    displayName: Replace settings variables
+    inputs:
+      folderPath: "$(Pipeline.Workspace)/drop"
+      enableXmlTransform: false
+      jsonTargetFiles: "appsettings.json"
+
+  - script: |
+      cd __NAMESPACE__.Apis
+      dotnet tool uninstall dotnet-ef --global && \
+      dotnet tool install dotnet-ef --version 10.0.7 --global && \
+      dotnet ef database update --context CoreDbContext
+    displayName: Running database migrations
+
+  - script: |
+      dotnet tool uninstall --global Shakermaker.SqlServer && \
+      dotnet tool install --global Shakermaker.SqlServer
+    displayName: Install database tools
+    
+  - script: |
+      Shakermaker.SqlServer \
+        --source-directory "$(Build.SourcesDirectory)/__NAMESPACE__.Database" \
+        --release "$(ApiOptions.Version)" \
+        --environment "$(ApiOptions.Environment)" \
+        --connection-string "$(ConnectionStrings.DefaultConnection)"
+    displayName: Deploying database changes
+
+  - task: AzureWebApp@1
+    displayName: Deploy to Azure Web App
+    inputs:
+      azureSubscription: "$(Azure.Subscription)"
+      appType: "$(Azure.AppTypeApis)"
+      appName: "$(Azure.AppNameApis)"
+      package: "$(Pipeline.Workspace)/drop"
